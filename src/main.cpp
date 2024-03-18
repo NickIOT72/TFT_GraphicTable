@@ -1,5 +1,6 @@
-#include <Adafruit_GFX.h> // Hardware-specific library
+#include <Arduino.h>
 #include <MCUFRIEND_kbv.h>
+
 MCUFRIEND_kbv tft;
 
 #define BLACK   0x0000
@@ -20,9 +21,52 @@ MCUFRIEND_kbv tft;
 #define OLIVE     RGB(128, 128, 0)
 #define PURPLE    RGB(128, 0, 128)
 #define AZURE     RGB(0, 128, 255)
-#define ORANGE    RGB(255,128
+#define ARDUINO_TURQUOISE RGB(0,151,156)
 
 #define LANDSCAPE 1
+
+#define LOGO_POS_X 45
+#define LOGO_POS_Y 165
+
+#define LOGOTEXT_POS_X 85
+#define LOGOTEXT_POS_Y 285
+
+#define LOGO_SIZE_TEXT 3
+
+struct textTFT {
+    uint16_t x;
+    uint16_t y;
+    uint16_t fcolor = BLACK;
+    uint16_t bcolor = WHITE;
+    uint8_t textSize = 1;
+    String Text;
+};
+
+void setUpText( struct textTFT t )
+{
+    tft.setCursor(t.x, t.y);
+    tft.setTextColor( t.fcolor , t.bcolor );
+    tft.setTextSize( t.textSize );
+    tft.println(t.Text);
+}
+
+void logoScreen()
+{
+    struct textTFT t;
+    t.x = LOGO_POS_X;
+    t.y = LOGO_POS_Y;
+    t.fcolor = ARDUINO_TURQUOISE;
+    t.bcolor = WHITE;
+    t.textSize = LOGO_SIZE_TEXT;
+    t.Text = "Here's the Arduino Logo";
+    setUpText( t );
+
+    // Set the Logo
+    t.x = LOGOTEXT_POS_X;
+    t.y= LOGOTEXT_POS_Y;
+    t.Text = "TFT Graphic Table";
+    setUpText( t );
+}
 
 void setup()
 {
@@ -35,29 +79,16 @@ void setup()
     if (identifier == 0xEFEF) identifier = 0x9486;
     tft.begin(identifier);
     tft.fillScreen(WHITE);
-     tft.setRotation(LANDSCAPE);
+    tft.setRotation(LANDSCAPE);
+    // Set Up Logo Animation
+    logoScreen();
+    delay(3000);
+    // White Screen
+    tft.fillScreen(WHITE);
+    delay(500);
 }
-
-char *msg[] = { "PORTRAIT", "LANDSCAPE", "PORTRAIT_REV", "LANDSCAPE_REV" };
-uint8_t aspect;
 
 void loop()
 {
-    // put your main code here, to run repeatedly:
-    uint16_t x = 50, y = 100;
-    tft.setRotation(aspect);
-    tft.fillScreen(0x0000);
-    tft.setCursor(0, 0);
-    tft.setTextSize(2);
-    tft.println(msg[aspect]);
-    tft.setCursor(x, y);
-    tft.println("[x=" + String(x) + ",y=" + String(y) + "]");
-    delay(5000);
-    tft.println("INVERT ON");
-    tft.invertDisplay(true);
-    delay(1000);
-    tft.invertDisplay(false);
-    tft.println("INVERT OFF");
-    delay(1000);
-    if (++aspect >= 4) aspect = 0;
+    
 }
