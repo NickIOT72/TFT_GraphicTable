@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <MCUFRIEND_kbv.h>
+#include <Adafruit_GFX.h>
 
 #define PORTRAIT  0
 #define LANDSCAPE 1
@@ -19,6 +20,7 @@ MCUFRIEND_kbv tft;
 
 #define RGB(r, g, b) (((r&0xF8)<<8)|((g&0xFC)<<3)|(b>>3))
 
+#define DARKRED   RGB(127, 0, 0)
 #define GREY      RGB(127, 127, 127)
 #define DARKGREY  RGB(64, 64, 64)
 #define TURQUOISE RGB(0, 128, 128)
@@ -30,14 +32,19 @@ MCUFRIEND_kbv tft;
 
 #define LANDSCAPE 1
 
-struct RGB_Model{
-    uint8_t red = 255;
-    uint8_t green = 255;
-    uint8_t blue = 255;
-    uint8_t PointSize = 1;
+uint8_t SCREEN = 0;
+
+struct pencil_model{
+  int x;
+  int y;
+  int z;
+  uint8_t red = 0;
+  uint8_t green = 0;
+  uint8_t blue = 0;
+  uint8_t PointSize = 1;
 };
 
-struct RGB_Model tftColorTable;
+struct pencil_model tftColorTable;
 
 // MCUFRIEND UNO shield shares pins with the TFT.
 #if defined(ESP32)
@@ -58,18 +65,10 @@ TouchScreen ts(XP, YP, XM, YM, 300);   //re-initialised after diagnose
 TSPoint tp;
 
 //const int TS_LEFT=99,TS_RT=948,TS_TOP=147,TS_BOT=643;// Data obtained by calibration
-const int TS_LEFT=100,TS_RT=946,TS_TOP=136,TS_BOT=666;//
+const int TS_LEFT=94,TS_RT=951,TS_TOP=158,TS_BOT=656;
 /**** EXTRA FUNCTIONS  */
 
-struct TFTpoints{
-  int x;
-  int y;
-  int z;
-};
-
-struct TFTpoints tftp;
-
-void setTFTpoints( struct TFTpoints *p , struct TSPoint tp)
+void setTFTpoints( struct pencil_model *p , struct TSPoint tp)
 {
   p->x = map(tp.y, TS_RT, TS_LEFT, 0, 480);
   p->y = map(tp.x, TS_BOT, TS_TOP, 0, 320);
@@ -94,6 +93,16 @@ void setUpText( struct textTFT t )
 }
 /**** END  */
 
+
+/************* END  **/
+
+/***** Buttons */
+
+Adafruit_GFX_Button button_refresh, button_ok;
+bool button_refresh_pressed = false;
+
+/****** END */
+
 /**** SCREEN FUNCTIONS  */
 
 #define BAR_WIDTH tft.width()
@@ -109,10 +118,28 @@ void setUpText( struct textTFT t )
 
 #define SPACE_BTW(x) ( LABEL_FIRST_POSX + x*LABEL_SPACE_BTW )
 
+bool verifyRedColor(){
+    return ( tftColorTable.y >= 285 && tftColorTable.x >= SPACE_BTW(0) && tftColorTable.x <= SPACE_BTW(0) + LABEL_SIZE );
+}
+
+bool verifyGreenColor(){
+    return ( tftColorTable.y >= 285 && tftColorTable.x >= SPACE_BTW(1) && tftColorTable.x <= SPACE_BTW(1) + LABEL_SIZE );
+}
+
+bool verifyBlueColor(){
+    return ( tftColorTable.y >= 285 && tftColorTable.x >= SPACE_BTW(2) && tftColorTable.x <= SPACE_BTW(2) + LABEL_SIZE );
+}
+
+bool verifyPecilSize(){
+    return ( tftColorTable.y >= 285 && tftColorTable.x >= SPACE_BTW(4) + LABEL_SIZE && tftColorTable.x <= SPACE_BTW(4) + LABEL_SIZE + LABEL_PENCIL_WIDTH );
+}
+
 void homeScreen()
 {
+  SCREEN = 2;
     // Menu Bar
     tft.fillRect( BAR_POSX , BAR_POSY , BAR_WIDTH, BAR_HEIGHT, GREY );
+    tft.fillRect( 440 , 0 , 40, tft.height(), GREY );
     // RGB Colors
     tft.fillRect( SPACE_BTW(0) , LABEL_POSY , LABEL_SIZE, LABEL_SIZE, RGB( tftColorTable.red, 0,0 ) );
     tft.fillRect( SPACE_BTW(1) , LABEL_POSY , LABEL_SIZE, LABEL_SIZE, RGB( 0, tftColorTable.green,0 ) );
@@ -128,26 +155,29 @@ void homeScreen()
     t.textSize = 3;
     t.Text = "PS: " + String(tftColorTable.PointSize);
     setUpText( t );
+    button_refresh.initButton(&tft,  340, 300, 80, 38, BLACK, GREEN, WHITE, "REF", 2);
+    button_refresh.drawButton(false);
 }
 
 #define LOGO_POS_X 45
 #define LOGO_POS_Y 165
 
 #define LOGOTEXT_POS_X 85
-#define LOGOTEXT_POS_Y 285
+#define LOGOTEXT_POS_Y 165
 
 #define LOGO_SIZE_TEXT 3
 
 void logoScreen()
 {
+  SCREEN = 1;
     struct textTFT t;
-    t.x = LOGO_POS_X;
-    t.y= LOGO_POS_Y;
+    //t.x = LOGO_POS_X;
+    //t.y= LOGO_POS_Y;
     t.fcolor= ARDUINO_TURQUOISE;
     t.bcolor = WHITE ;
     t.textSize = LOGO_SIZE_TEXT ;
-    t.Text= "Here's the Arduino Logo";
-    setUpText( t );
+    //t.Text= "Here's the Arduino Logo";
+    //setUpText( t );
     // Set the Logo
     t.x = LOGOTEXT_POS_X;
     t.y= LOGOTEXT_POS_Y;
@@ -175,7 +205,7 @@ void showpins(int A, int D, int value, const char *msg)
 {
     char buf[40];
     sprintf(buf, "%s (%s, D%d) = %d", msg, Aval(A), D, value);
-    Serial.println(buf);
+    //Serial.println(buf);
 }
 
 
@@ -203,11 +233,7 @@ bool ISPRESSED(void)
         oldstate = state;
         delay(5);
     }
-    if( oldstate ){
-      setTFTpoints( &tftp ,  tp );
-      Serial.println("tp.x=" + String(tp.x) + ", tp.y=" + String(tp.y) + ", tp.z =" + String(tp.z));
-      Serial.println("tftp.x=" + String(tftp.x) + ", tftp.y=" + String(tftp.y) + ", tftp.z =" + String(tftp.z));
-    }
+    setTFTpoints( &tftColorTable ,  tp );
     return oldstate;
 }
 
@@ -217,12 +243,12 @@ bool diagnose_pins()
     uint8_t i, j, Apins[2], Dpins[2], found = 0;
     uint16_t value, Values[2];
 
-    Serial.println(F("Making all control and bus pins INPUT_PULLUP"));
-    Serial.println(F("Typical 30k Analog pullup with corresponding pin"));
-    Serial.println(F("would read low when digital is written LOW"));
-    Serial.println(F("e.g. reads ~25 for 300R X direction"));
-    Serial.println(F("e.g. reads ~30 for 500R Y direction"));
-    Serial.println(F(""));
+    //Serial.println(F("Making all control and bus pins INPUT_PULLUP"));
+    //Serial.println(F("Typical 30k Analog pullup with corresponding pin"));
+    //Serial.println(F("would read low when digital is written LOW"));
+    //Serial.println(F("e.g. reads ~25 for 300R X direction"));
+    //Serial.println(F("e.g. reads ~30 for 500R Y direction"));
+    //Serial.println(F(""));
 
     for (i = A0; i < A5; i++) pinMode(i, INPUT_PULLUP);
     for (i = 2; i < 10; i++) pinMode(i, INPUT_PULLUP);
@@ -248,12 +274,12 @@ bool diagnose_pins()
     }
     if (found == 2) {
         int idx = Values[0] < Values[1];
-                Serial.println(F("Diagnosing as:-"));
+        /*        Serial.println(F("Diagnosing as:-"));
                 for (i = 0; i < 2; i++) {
                     showpins(Apins[i], Dpins[i], Values[i],
                              (Values[i] < Values[!i]) ? "XM,XP: " : "YP,YM: ");
                 }
-        /**/
+        */
         XM = Apins[!idx]; XP = Dpins[!idx]; YP = Apins[idx]; YM = Dpins[idx];
         ts = TouchScreen(XP, YP, XM, YM, 300);    //re-initialise with pins
         return true;                              //success
@@ -304,7 +330,7 @@ uint16_t readID(void) {
 void bofe(char *buf)
 {
     tft.println(buf);
-    Serial.println(buf);
+    //Serial.println(buf);
 }
 
 void report()
@@ -566,8 +592,6 @@ void calibrationScreen()
 
 }
 
-/************* END  **/
-
 void setup()
 {
     // put your setup code here, to run once:
@@ -582,20 +606,368 @@ void setup()
     tft.setRotation(LANDSCAPE);
     //setTouchScreenMode(identifier);
     // Set Up Logo Animation
-    //logoScreen();
-    //delay(3000);
+    logoScreen();
+    delay(3000);
     // White Screen
-    //tft.fillScreen(WHITE);
-    //delay(500);
+    tft.fillScreen(WHITE);
+    delay(500);
     // Show Home Screen
-    //homeScreen();
+    homeScreen();
     //calibrationScreen();
     //tft.fillScreen(WHITE);
-    homeScreen();
+    //homeScreen();
+}
+
+bool verifybar()
+{
+    bool ybar = tftColorTable.y >= 10 && tftColorTable.y <= 240;
+    bool xbar = tftColorTable.x >= 445 && tftColorTable.y <= 475;
+    return ybar && xbar;
+    
 }
 
 void loop()
 {
-  while (ISPRESSED() == false) {}
-  while (ISPRESSED() == true) {}
+    static bool RedState, GreenState, BlueState, PencilState;
+  while (ISPRESSED() == true) {
+    if ( tftColorTable.y >= 3 && tftColorTable.y <= 275 && tftColorTable.x >= 3 && tftColorTable.x <= 435 && SCREEN == 2  ){
+      uint16_t colorPoint = RGB( tftColorTable.red , tftColorTable.green , tftColorTable.blue );
+      tft.drawCircle(tftColorTable.x, tftColorTable.y, tftColorTable.PointSize*2, colorPoint  );
+      tft.fillCircle(tftColorTable.x, tftColorTable.y, tftColorTable.PointSize*2, colorPoint );
+    } 
+    else if ( tftColorTable.x >= 440 && tftColorTable.y < 280 && SCREEN == 2  )
+    {
+        if (RedState || BlueState || GreenState){
+            if ( verifybar() ){
+                int16_t set_color = 0;
+                if (RedState) set_color= RED;
+                if (BlueState) set_color= BLUE;
+                if (GreenState) set_color= GREEN;
+                
+                int SecondRectangleYpos = tftColorTable.y;
+                int SecondRectangleHeigth = SecondRectangleYpos - 10;
+
+                int firstRectangleYpos = 240;
+                int firstRectangleHeigth = 230 - SecondRectangleYpos;
+                
+                tft.fillRect( 450, firstRectangleYpos - firstRectangleHeigth, 20, firstRectangleHeigth, set_color );
+                tft.fillRect( 450, 10, 20, SecondRectangleHeigth, BLACK );
+
+                int newcolor = map(tftColorTable.y, 240, 10 , 0 , 255  );
+                if(RedState) tftColorTable.red = newcolor;
+                if(BlueState) tftColorTable.blue = newcolor;
+                if(GreenState) tftColorTable.green = newcolor;
+
+                // RGB Colors
+                tft.fillRect( SPACE_BTW(0) , LABEL_POSY , LABEL_SIZE, LABEL_SIZE, RGB( tftColorTable.red, 0,0 ) );
+                tft.fillRect( SPACE_BTW(1) , LABEL_POSY , LABEL_SIZE, LABEL_SIZE, RGB( 0, tftColorTable.green,0 ) );
+                tft.fillRect( SPACE_BTW(2) , LABEL_POSY , LABEL_SIZE, LABEL_SIZE, RGB( 0, 0,tftColorTable.blue ) );
+                tft.fillRect( SPACE_BTW(3) , LABEL_POSY , 2*LABEL_SIZE, LABEL_SIZE, RGB( tftColorTable.red, tftColorTable.green ,tftColorTable.blue ) );
+
+
+            }
+            bool down = tftColorTable.z > 200;
+            button_ok.press(down && button_ok.contains(tftColorTable.x, tftColorTable.y));
+            if (button_ok.justPressed()) {
+              button_ok.drawButton(true);
+              Serial.println("Pressed button ok");
+              while( !button_ok.justReleased()){
+                ISPRESSED();
+                down = tftColorTable.z > 200;
+                button_ok.press(down && button_ok.contains(tftColorTable.x, tftColorTable.y));
+              }
+              button_ok.drawButton();
+                RedState = false;
+                GreenState = false;
+                BlueState = false;
+                PencilState = false;
+              tft.fillRect( 440 , 0 , 40, tft.height(), GREY );
+              Serial.println("Realesed button ok");
+            } 
+        }
+        else if ( PencilState )
+        {
+            //445, 195, 460, 180, 475, 195
+            //445, 220, 460, 235, 475, 220
+            if (  tftColorTable.x >= 440 && tftColorTable.x <= 470 && tftColorTable.y >= 150 && tftColorTable.y <= 190  ){
+                bool down = tftColorTable.z > 200;
+                if ( down ){
+                    uint16_t color = tft.readPixel( tftColorTable.x , tftColorTable.y );
+                    Serial.print("Color:");
+                    Serial.println(color, HEX);
+                    if ( color == DARKRED ){
+                        tft.fillTriangle(445, 195, 460, 180, 475, 195, RED);  
+                    }
+                    uint8_t count = tftColorTable.PointSize;
+                    bool count_One = true;
+                    long tstart = millis();
+                    while( down ){
+                        ISPRESSED();
+                        down = tftColorTable.z > 200;
+                        if ( millis() - tstart > 1000 ){
+                            if ( count < 4 ){
+                                count++;
+                                tftColorTable.PointSize = count;
+
+                                struct textTFT t;
+                                t.x = 190;
+                                t.y= 295;
+                                t.fcolor= BLACK;
+                                t.bcolor= WHITE;
+                                t.textSize = 3;
+                                t.Text = "PS: " + String(tftColorTable.PointSize);
+                                setUpText( t );
+
+                                tft.fillRect(445, 200, 30, 15, WHITE);
+            
+                                t.x = 445;
+                                t.y= 200;
+                                t.fcolor= BLACK;
+                                t.bcolor = WHITE ;
+                                t.textSize = 2 ;
+                                t.Text= String(tftColorTable.PointSize  );
+                                setUpText( t );
+
+                                
+                            }
+                            count_One = false;
+                            tstart = millis();
+                        }
+                    }
+                    if( count_One ){
+                        if ( count < 4 ){
+                            count++;
+                            tftColorTable.PointSize = count;
+                            struct textTFT t;
+                            t.x = 190;
+                            t.y= 295;
+                            t.fcolor= BLACK;
+                            t.bcolor= WHITE;
+                            t.textSize = 3;
+                            t.Text = "PS: " + String(tftColorTable.PointSize);
+                            setUpText( t );
+
+                            tft.fillRect(445, 200, 30, 15, WHITE);
+            
+                            t.x = 445;
+                            t.y= 200;
+                            t.fcolor= BLACK;
+                            t.bcolor = WHITE ;
+                            t.textSize = 2 ;
+                            t.Text= String(tftColorTable.PointSize  );
+                            setUpText( t );
+
+                        }
+                    }
+                    tft.fillTriangle(445, 195, 460, 180, 475, 195, DARKRED);
+                }
+            }else if (  tftColorTable.x >= 440 && tftColorTable.x <= 470 && tftColorTable.y >= 210 && tftColorTable.y <= 230  ){
+                bool down = tftColorTable.z > 200;
+                if ( down ){
+                    uint16_t color = tft.readPixel( tftColorTable.x , tftColorTable.y );
+                    Serial.print("Color:");
+                    Serial.println(color, HEX);
+                    if ( color == DARKRED ){
+                        tft.fillTriangle(445, 220, 460, 235, 475, 220, RED);  
+                    }
+                    uint8_t count = tftColorTable.PointSize;
+                    bool count_One = true;
+                    long tstart = millis();
+                    while( down ){
+                        ISPRESSED();
+                        down = tftColorTable.z > 200;
+                        if ( millis() - tstart > 1000 ){
+                            if ( count > 1 ){
+                                count--;
+                                tftColorTable.PointSize = count;
+
+                                struct textTFT t;
+                                t.x = 190;
+                                t.y= 295;
+                                t.fcolor= BLACK;
+                                t.bcolor= WHITE;
+                                t.textSize = 3;
+                                t.Text = "PS: " + String(tftColorTable.PointSize);
+                                setUpText( t );
+
+                                tft.fillRect(445, 200, 30, 15, WHITE);
+            
+                                t.x = 445;
+                                t.y= 200;
+                                t.fcolor= BLACK;
+                                t.bcolor = WHITE ;
+                                t.textSize = 2 ;
+                                t.Text= String(tftColorTable.PointSize  );
+                                setUpText( t );
+
+                                
+                            }
+                            count_One = false;
+                            tstart = millis();
+                        }
+                    }
+                    if( count_One ){
+                        if ( count > 1 ){
+                            count--;
+                            tftColorTable.PointSize = count;
+                            struct textTFT t;
+                            t.x = 190;
+                            t.y= 295;
+                            t.fcolor= BLACK;
+                            t.bcolor= WHITE;
+                            t.textSize = 3;
+                            t.Text = "PS: " + String(tftColorTable.PointSize);
+                            setUpText( t );
+
+                            tft.fillRect(445, 200, 30, 15, WHITE);
+            
+                            t.x = 445;
+                            t.y= 200;
+                            t.fcolor= BLACK;
+                            t.bcolor = WHITE ;
+                            t.textSize = 2 ;
+                            t.Text= String(tftColorTable.PointSize  );
+                            setUpText( t );
+                            
+                        }
+                    }
+                    tft.fillTriangle(445, 220, 460, 235, 475, 220, DARKRED);
+                }
+            }
+            bool down = tftColorTable.z > 200;
+            button_ok.press(down && button_ok.contains(tftColorTable.x, tftColorTable.y));
+            if (button_ok.justPressed()) {
+              button_ok.drawButton(true);
+              Serial.println("Pressed button ok");
+              while( !button_ok.justReleased()){
+                ISPRESSED();
+                down = tftColorTable.z > 200;
+                button_ok.press(down && button_ok.contains(tftColorTable.x, tftColorTable.y));
+              }
+              button_ok.drawButton();
+                RedState = false;
+                GreenState = false;
+                BlueState = false;
+                PencilState = false;
+              tft.fillRect( 440 , 0 , 40, tft.height(), GREY );
+              Serial.println("Realesed button ok");
+            }
+        }
+    }
+    else if ( tftColorTable.y >= 280 && SCREEN == 2  )
+    {
+        if ( verifyRedColor() && !RedState ){
+            tft.fillRect( 440 , 0 , 40, tft.height(), GREY );
+            Serial.println( "Red square" );
+            RedState = true;
+            GreenState = false;
+            BlueState = false;
+            PencilState = false;
+            //Primer rectangulo
+            int firstRectangleYpos = 240;
+            int firstRectangleHeigth = map( tftColorTable.red, 0, 255 , 0, 230 );
+
+            int SecondRectangleYpos = map( tftColorTable.red, 0, 255 , firstRectangleYpos, 10 );
+            int SecondRectangleHeigth = 230 - firstRectangleHeigth;
+            
+            tft.fillRect( 450, firstRectangleYpos - firstRectangleHeigth, 20, firstRectangleHeigth, RED );
+            tft.fillRect( 450, 10, 20, SecondRectangleHeigth, BLACK );
+
+            button_ok.initButton( &tft, 460, 260 , 30, 30, BLACK, BLUE, WHITE, "OK", 1);
+            button_ok.drawButton(false);
+
+        }
+        else if ( verifyGreenColor() && !GreenState ){
+            tft.fillRect( 440 , 0 , 40, tft.height(), GREY );
+            Serial.println( "Green square" );
+            RedState = false;
+            GreenState = true;
+            BlueState = false;
+            PencilState = false;
+            //Primer rectangulo
+            int firstRectangleYpos = 240;
+            int firstRectangleHeigth = map( tftColorTable.green, 0, 255 , 0, 230 );
+
+            int SecondRectangleYpos = map( tftColorTable.green, 0, 255 , firstRectangleYpos, 10 );
+            int SecondRectangleHeigth = 230 - firstRectangleHeigth;
+            
+            tft.fillRect( 450, firstRectangleYpos - firstRectangleHeigth, 20, firstRectangleHeigth, GREEN );
+            tft.fillRect( 450, 10, 20, SecondRectangleHeigth, BLACK );
+
+            button_ok.initButton( &tft, 460, 260 , 30, 30, BLACK, BLUE, WHITE, "OK", 1);
+            button_ok.drawButton(false);
+        }
+        else if ( verifyBlueColor() && !BlueState){
+            tft.fillRect( 440 , 0 , 40, tft.height(), GREY );
+            Serial.println( "Blue square" );
+            RedState = false;
+            GreenState = false;
+            BlueState = true;
+            PencilState = false;
+
+            //Primer rectangulo
+            int firstRectangleYpos = 240;
+            int firstRectangleHeigth = map( tftColorTable.blue, 0, 255 , 0, 230 );
+
+            int SecondRectangleYpos = map( tftColorTable.blue, 0, 255 , firstRectangleYpos, 10 );
+            int SecondRectangleHeigth = 230 - firstRectangleHeigth;
+            
+            tft.fillRect( 450, firstRectangleYpos - firstRectangleHeigth, 20, firstRectangleHeigth, BLUE );
+            tft.fillRect( 450, 10, 20, SecondRectangleHeigth, BLACK );
+
+            button_ok.initButton( &tft, 460, 260 , 30, 30, BLACK, BLUE, WHITE, "OK", 1);
+            button_ok.drawButton(false);
+        }
+        else if( verifyPecilSize() && !PencilState )
+        {
+            tft.fillRect( 440 , 0 , 40, tft.height(), GREY );
+            Serial.println( "Pencil square" );
+            RedState = false;
+            GreenState = false;
+            BlueState = false;
+            PencilState = true;
+            
+            tft.fillTriangle(445, 195, 460, 180, 475, 195, DARKRED);
+            tft.fillRect(445, 200, 30, 15, WHITE);
+            struct textTFT t;
+            t.x = 445;
+            t.y= 200;
+            t.fcolor= BLACK;
+            t.bcolor = WHITE ;
+            t.textSize = 2 ;
+            t.Text= String(tftColorTable.PointSize  );
+            setUpText( t );
+
+            tft.fillTriangle(445, 220, 460, 235, 475, 220, DARKRED);
+
+            button_ok.initButton( &tft, 460, 260 , 30, 30, BLACK, BLUE, WHITE, "OK", 1);
+            button_ok.drawButton(false);
+
+        }
+        else{
+            //Serial.println("X:" + String(tftColorTable.x) + " Y:" + String(tftColorTable.y) );
+            bool down = tftColorTable.z > 200;
+            button_refresh.press(down && button_refresh.contains(tftColorTable.x, tftColorTable.y));
+            if (button_refresh.justPressed() && !button_refresh_pressed) {
+              button_refresh.drawButton(true);
+              button_refresh_pressed = true;
+              Serial.println("Pressed button");
+              while( button_refresh_pressed){
+                ISPRESSED();
+                down = tftColorTable.z > 200;
+                button_refresh.press(down && button_refresh.contains(tftColorTable.x, tftColorTable.y));
+                if (button_refresh.justReleased() ) button_refresh_pressed = false;
+              }
+              button_refresh.drawButton();
+              tft.fillRect(0, 0, tft.width() - 40, 280, WHITE);
+              button_refresh_pressed = false;
+              Serial.println("Realesed button");
+            } 
+        }
+
+      }    
+    }
+  while (ISPRESSED() == false) {
+  }
+
 }
